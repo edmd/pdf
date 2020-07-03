@@ -43,7 +43,7 @@ namespace pdf.Tests
 
             pdfs = DataGenerator.GetPdfs();
             options = new DbContextOptionsBuilder<PdfContext>()
-                .UseInMemoryDatabase(databaseName: "PdfDatabase")
+                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString()) // Needs to be torn down fully for each test
                 .EnableSensitiveDataLogging(true)
                 .Options;
 
@@ -72,90 +72,6 @@ namespace pdf.Tests
 
 
             controller = new PdfController(mockLogger.Object, mockService.Object);
-        }
-
-        [Test, Category("Integration")]
-        public void UploadValidPdfTest()
-        {
-            var fileName = "pdf.pdf";
-            var io = File.Open(fileName, FileMode.Open);
-            byte[] Bytes = new byte[io.Length + 1];
-            io.Read(Bytes, 0, Bytes.Length);
-
-            using (var content = new MultipartFormDataContent())
-            {
-                var fileContent = new ByteArrayContent(Bytes);
-                fileContent.Headers.ContentDisposition 
-                    = new System.Net.Http.Headers.ContentDispositionHeaderValue("form-data") { FileName = fileName };
-                content.Add(fileContent);
-
-                var response = _client.PostAsync("/api/pdf", content).Result;
-                response.StatusCode.Should().Be(HttpStatusCode.Created);
-
-                var pdf = JsonConvert.DeserializeObject<Pdf>(response.Content.ReadAsStringAsync().Result);
-                pdf.Should().NotBeNull();
-            }
-        }
-
-        [Test, Category("Integration")]
-        public void UploadInvalidPdfTest()
-        {
-            var fileName = "largepdf.pdf";
-            var io = File.Open(fileName, FileMode.Open);
-            byte[] Bytes = new byte[io.Length + 1];
-            io.Read(Bytes, 0, Bytes.Length);
-
-            using (var content = new MultipartFormDataContent())
-            {
-                var fileContent = new ByteArrayContent(Bytes);
-                fileContent.Headers.ContentDisposition
-                    = new System.Net.Http.Headers.ContentDispositionHeaderValue("form-data") { FileName = fileName };
-                content.Add(fileContent);
-
-                var response = _client.PostAsync("/api/pdf", content).Result;
-                response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-            }
-        }
-
-        [Test, Category("Integration")]
-        public void ReturnAllPdfsIntTest()
-        {
-            var response = _client.GetAsync("/api/pdf?order=NameDescending").Result;
-
-            Assert.IsInstanceOf<ActionResult<IEnumerable<Pdf>>>(response);
-            Assert.IsNotNull(response);
-        }
-
-        [Test, Category("Integration")]
-        public void ReturnIndividualPdfIntTest()
-        {
-            var response = _client.GetAsync($"/api/pdf/{trueGuid}").Result;
-
-            Assert.IsInstanceOf<ActionResult<Pdf>>(response);
-
-            //Assert.AreEqual(response.v, trueGuid, "Guids are not equal");
-        }
-
-        [Test, Category("Integration")]
-        public void ReturnMissingPdfIntTest()
-        {
-            var response = _client.GetAsync($"/api/pdf/{falseGuid}").Result;
-
-            Assert.IsInstanceOf<ActionResult<Pdf>>(response);
-
-            response.StatusCode.Should().Be((int)HttpStatusCode.NotFound);
-        }
-
-        [Test, Category("Integration")]
-        public void DeleteValidPdfIntTest()
-        {
-            var response = _client.DeleteAsync($"/api/pdf/{trueGuid}").Result;
-        }
-
-        [Test, Category("Integration")]
-        public void DeleteInvalidPdfIntTest()
-        {
-            var response = _client.DeleteAsync($"/api/pdf/{falseGuid}").Result;
         }
 
         [Test, Category("Unit")]

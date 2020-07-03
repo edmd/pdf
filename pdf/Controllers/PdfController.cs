@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -62,24 +61,27 @@ namespace pdf.Controllers
             var pdf = (Pdf)null;
             var tuple = await ExtractFile();
 
-            pdf = new Pdf
+            if (tuple.Item1 != null)
             {
-                Content = tuple.Item1,
-                Size = tuple.Item1.Length,
-                Title = tuple.Item2,
-                UploadDate = DateTime.UtcNow
-            };
+                pdf = new Pdf
+                {
+                    Content = tuple.Item1,
+                    Size = tuple.Item1.Length,
+                    Title = tuple.Item2,
+                    UploadDate = DateTime.UtcNow
+                };
 
-            var results = new List<ValidationResult>();
-            bool isValid = Validator.TryValidateObject(pdf, new ValidationContext(pdf, null, null), results, true);
+                var results = new List<ValidationResult>();
+                bool isValid = Validator.TryValidateObject(pdf, new ValidationContext(pdf, null, null), results, true);
 
-            if (isValid)
-            {
-                await _pdfService.InsertPdf(pdf);
-                return CreatedAtAction(nameof(GetPdf), new { id = pdf.Id }, pdf);
+                if (isValid)
+                {
+                    await _pdfService.InsertPdf(pdf);
+                    return CreatedAtAction(nameof(GetPdf), new { id = pdf.Id }, pdf);
+                }
             }
 
-            return BadRequest("ErrorCount: " + ModelState.ErrorCount);
+            return BadRequest(ModelState);
         }
 
         // DELETE: api/Pdf/5
@@ -120,7 +122,7 @@ namespace pdf.Controllers
                         var fileName = contentDisposition.FileName.Value;
                         using var memoryStream = new MemoryStream();
                         await section.Body.CopyToAsync(memoryStream);
-                        if (memoryStream.Length == 0)
+                        if (memoryStream.Length <= 1) // It's coming back as 1 for some bloody reason
                         {
                             ModelState.AddModelError("File", "The file is empty.");
                         }
