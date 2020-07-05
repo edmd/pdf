@@ -16,6 +16,7 @@ using FluentAssertions;
 using System.Net.Http;
 using System.IO;
 using Newtonsoft.Json;
+using System.Linq;
 
 namespace pdf.Tests
 {
@@ -25,6 +26,7 @@ namespace pdf.Tests
         
         private Guid trueGuid, falseGuid;
         private List<Pdf> pdfs;
+        private Pdf pdf;
         private DbContextOptions<PdfContext> options;
 
         // For integration tests
@@ -39,20 +41,35 @@ namespace pdf.Tests
             _factory = new ApiWebApplicationFactory();
             _client = _factory.CreateClient();
 
-            pdfs = DataGenerator.GetPdfs();
-            options = new DbContextOptionsBuilder<PdfContext>()
-                .UseInMemoryDatabase(databaseName: "PdfDatabase") // Needs to be torn down fully for each test
-                .EnableSensitiveDataLogging(true)
-                .Options;
+            var getResponse = _client.GetAsync("/api/pdf?order=NameDescending").Result;
+            var stringResponse = getResponse.Content.ReadAsStringAsync().Result;
+            pdfs = JsonConvert.DeserializeObject<List<Pdf>>(stringResponse);
 
-            pdfContext = new PdfContext(options);
-            pdfService = new PdfService(pdfContext);
+            if(!pdfs.Any()) {
+                var fileName = "pdf.pdf";
+                var io = File.Open(fileName, FileMode.Open);
+                byte[] Bytes = new byte[io.Length + 1];
+                io.Read(Bytes, 0, Bytes.Length);
 
-            var result = pdfService.InsertPdf(pdfs[0]);
-            result = pdfService.InsertPdf(pdfs[1]);
+                using (var content = new MultipartFormDataContent())
+                {
+                    var fileContent = new ByteArrayContent(Bytes);
 
-            trueGuid = new Guid("7e7ceb51-37e0-4ebb-897c-ce801b0e37fe");
-            falseGuid = new Guid("12345678901234567890123456789011");
+                    fileContent.Headers.ContentDisposition
+                        = new System.Net.Http.Headers.ContentDispositionHeaderValue("form-data") { FileName = "1" + fileName };
+                    content.Add(fileContent);
+                    var response1 = _client.PostAsync("/api/pdf", content).Result;
+
+                    fileContent.Headers.ContentDisposition
+                        = new System.Net.Http.Headers.ContentDispositionHeaderValue("form-data") { FileName = "2" + fileName };
+                    var response2 = _client.PostAsync("/api/pdf", content).Result;
+
+                    var allResponse = _client.GetAsync("/api/pdf?order=NameDescending").Result;
+                    var allStringResponse = allResponse.Content.ReadAsStringAsync().Result;
+                    pdfs = JsonConvert.DeserializeObject<List<Pdf>>(allStringResponse);
+                    trueGuid = pdfs.First().Id;
+                }
+            }
         }
 
         [Test, Category("Integration")]
@@ -144,9 +161,6 @@ namespace pdf.Tests
             }
         }
 
-        // TODO: The InMemory database is not aligning with the instantiated ApiWebApplicationFactory Context
-        // The results returned are therefore not correct - this will need to be looked into
-        // The PDF uploading integration tests are working as expected.
         [Test, Category("Integration")]
         public void ReturnAllPdfsIntTest()
         {
@@ -162,7 +176,11 @@ namespace pdf.Tests
             var response = _client.GetAsync($"/api/pdf/{trueGuid}").Result;
 
             Assert.IsNotNull(response);
-            //response.StatusCode.Should().Be((int)HttpStatusCode.OK);
+            response.StatusCode.Should().Be((int)HttpStatusCode.OK);
+
+            var stringResponse = response.Content.ReadAsStringAsync().Result;
+            pdf = JsonConvert.DeserializeObject<Pdf>(stringResponse);
+            Assert.AreEqual(pdf.Id, trueGuid, $"Pdf with Id {trueGuid} is not present");
         }
 
         [Test, Category("Integration")]
@@ -178,7 +196,11 @@ namespace pdf.Tests
         {
             var response = _client.DeleteAsync($"/api/pdf/{trueGuid}").Result;
 
-            response.StatusCode.Should().Be((int)HttpStatusCode.NoContent);
+            var stringResponse = response.Content.ReadAsStringAsync().Result;
+            pdf = JsonConvert.DeserializeObject<Pdf>(stringResponse);
+            Assert.AreEqual(pdf.Id, trueGuid, $"Pdf with Id {trueGuid} is not present");
+
+            response.StatusCode.Should().Be((int)HttpStatusCode.OK);
         }
 
         [Test, Category("Integration")]
